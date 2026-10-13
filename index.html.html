@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KOTAK MISTERI NOMBOR</title>
+    <!-- Tailwind CSS for modern styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter & Fredoka for playful education look -->
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- MediaPipe Hands CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <style>
+        body {
+            font-family: 'Fredoka', 'Inter', sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        /* Custom animations & glow */
+        @keyframes float {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-10px) rotate(2deg); }
+        }
+        .animate-float {
+            animation: float 3s ease-in-out infinite;
+        }
+        .glow-box {
+            box-shadow: 0 0 25px rgba(234, 179, 8, 0.6);
+        }
+        /* Mirror webcam canvas */
+        .mirror {
+            transform: scaleX(-1);
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-white min-h-screen overflow-hidden flex flex-col items-center justify-between relative">
+
+    <!-- Hidden video element for MediaPipe feed -->
+    <video id="webcam" class="hidden" playsinline></video>
+    <!-- Visible background webcam canvas -->
+    <canvas id="webcamCanvas" class="absolute inset-0 w-full h-full object-cover -z-20 mirror opacity-40"></canvas>
+    <!-- Dark overlay gradient for contrast -->
+    <div class="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-900/80 to-slate-950/60 -z-10 pointer-events-none"></div>
+
+    <!-- HEADER -->
+    <header class="w-full max-w-6xl px-4 py-4 flex justify-between items-center z-10">
+        <div class="flex items-center gap-3 bg-slate-800/80 backdrop-blur px-5 py-2.5 rounded-2xl border border-slate-700 shadow-lg">
+            <div class="bg-yellow-500 text-slate-950 p-2 rounded-xl font-bold text-xl flex items-center justify-center w-10 h-10 shadow">
+                <i class="fa-solid fa-gift"></i>
+            </div>
+            <div>
+                <h1 class="text-lg font-bold tracking-wide text-yellow-400">KOTAK MISTERI NOMBOR</h1>
+                <p class="text-xs text-slate-300">Subjek: Matematik Tingkatan 4 (Subset)</p>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-4">
+            <!-- Score & Streak -->
+            <div class="bg-slate-800/80 backdrop-blur px-5 py-2.5 rounded-2xl border border-slate-700 shadow-lg flex items-center gap-6">
+                <div class="text-center">
+                    <span class="block text-xs text-slate-400 uppercase tracking-wider">Skor</span>
+                    <span id="scoreDisplay" class="text-2xl font-bold text-emerald-400">0</span>
+                </div>
+                <div class="h-8 w-px bg-slate-700"></div>
+                <div class="text-center">
+                    <span class="block text-xs text-slate-400 uppercase tracking-wider">Pusingan</span>
+                    <span id="roundDisplay" class="text-2xl font-bold text-cyan-400">1/5</span>
+                </div>
+                <div class="h-8 w-px bg-slate-700"></div>
+                <div class="text-center">
+                    <span class="block text-xs text-slate-400 uppercase tracking-wider">Masa</span>
+                    <span id="timerDisplay" class="text-2xl font-bold text-amber-400">30s</span>
+                </div>
+            </div>
+
+            <!-- Controls (Mute / Restart) -->
+            <div class="flex gap-2">
+                <button id="soundToggleBtn" onclick="toggleSound()" class="bg-slate-800 hover:bg-slate-700 p-3 rounded-2xl border border-slate-700 transition text-yellow-400 shadow-lg" title="Bunyi On/Off">
+                    <i class="fa-solid fa-volume-high text-lg"></i>
+                </button>
+                <button onclick="restartGame()" class="bg-slate-800 hover:bg-slate-700 p-3 rounded-2xl border border-slate-700 transition text-red-400 shadow-lg" title="Mula Semula">
+                    <i class="fa-solid fa-rotate-right text-lg"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN CONTENT AREA -->
+    <main class="w-full max-w-5xl flex-1 flex flex-col items-center justify-center relative px-4 z-10 my-2">
+        
+        <!-- Question Box -->
+        <div id="questionContainer" class="bg-slate-800/90 backdrop-blur-md border border-slate-700 px-8 py-6 rounded-3xl shadow-2xl text-center max-w-2xl w-full mb-8 transform transition-all duration-300">
+            <span class="inline-block bg-indigo-500/20 text-indigo-300 text-xs font-semibold px-3 py-1 rounded-full mb-3 border border-indigo-500/30">
+                Soalan Subset Matematik
+            </span>
+            <h2 id="questionText" class="text-2xl md:text-3xl font-bold text-white mb-2 leading-snug">
+                Memuatkan Soalan...
+            </h2>
+            <p class="text-slate-400 text-sm">Gunakan jari anda untuk menunjukkan dan menahan (Dwell 1 saat) pada kotak hadiah pilihan anda.</p>
+        </div>
+
+        <!-- 4 MYSTERY BOXES AT CORNERS / GRID -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-4xl relative">
+            
+            <!-- Box 0 (Top-Left) -->
+            <div id="box-0" class="mystery-box group relative bg-gradient-to-br from-indigo-900/80 to-slate-900/90 border-2 border-indigo-500/50 hover:border-indigo-400 rounded-3xl p-6 shadow-xl flex items-center gap-5 transition-all duration-300 backdrop-blur-md cursor-pointer overflow-hidden">
+                <div class="absolute -right-6 -bottom-6 w-28 h-28 bg-indigo-500/10 rounded-full blur-xl group-hover:bg-indigo-500/20 transition"></div>
+                <div class="box-icon-wrap w-16 h-16 rounded-2xl bg-indigo-600/30 border border-indigo-400/40 flex items-center justify-center text-3xl text-indigo-300 shadow-inner shrink-0 group-hover:scale-110 transition">
+                    <i class="fa-solid fa-gift animate-bounce"></i>
+                </div>
+                <div class="flex-1 z-10">
+                    <span class="text-xs uppercase tracking-wider text-indigo-400 font-semibold">Pilihan A</span>
+                    <p class="box-answer text-lg md:text-xl font-bold text-white mt-0.5">-</p>
+                </div>
+                <!-- Dwell Progress Ring / Bar -->
+                <div class="absolute bottom-0 left-0 h-1.5 bg-yellow-400 w-0 transition-all duration-100 dwell-bar"></div>
+            </div>
+
+            <!-- Box 1 (Top-Right) -->
+            <div id="box-1" class="mystery-box group relative bg-gradient-to-br from-purple-900/80 to-slate-900/90 border-2 border-purple-500/50 hover:border-purple-400 rounded-3xl p-6 shadow-xl flex items-center gap-5 transition-all duration-300 backdrop-blur-md cursor-pointer overflow-hidden">
+                <div class="absolute -right-6 -bottom-6 w-28 h-28 bg-purple-500/10 rounded-full blur-xl group-hover:bg-purple-500/20 transition"></div>
+                <div class="box-icon-wrap w-16 h-16 rounded-2xl bg-purple-600/30 border border-purple-400/40 flex items-center justify-center text-3xl text-purple-300 shadow-inner shrink-0 group-hover:scale-110 transition">
+                    <i class="fa-solid fa-gift animate-bounce" style="animation-delay: 0.2s;"></i>
+                </div>
+                <div class="flex-1 z-10">
+                    <span class="text-xs uppercase tracking-wider text-purple-400 font-semibold">Pilihan B</span>
+                    <p class="box-answer text-lg md:text-xl font-bold text-white mt-0.5">-</p>
+                </div>
+                <div class="absolute bottom-0 left-0 h-1.5 bg-yellow-400 w-0 transition-all duration-100 dwell-bar"></div>
+            </div>
+
+            <!-- Box 2 (Bottom-Left) -->
+            <div id="box-2" class="mystery-box group relative bg-gradient-to-br from-pink-900/80 to-slate-900/90 border-2 border-pink-500/50 hover:border-pink-400 rounded-3xl p-6 shadow-xl flex items-center gap-5 transition-all duration-300 backdrop-blur-md cursor-pointer overflow-hidden">
+                <div class="absolute -right-6 -bottom-6 w-28 h-28 bg-pink-500/10 rounded-full blur-xl group-hover:bg-pink-500/20 transition"></div>
+                <div class="box-icon-wrap w-16 h-16 rounded-2xl bg-pink-600/30 border border-pink-400/40 flex items-center justify-center text-3xl text-pink-300 shadow-inner shrink-0 group-hover:scale-110 transition">
+                    <i class="fa-solid fa-gift animate-bounce" style="animation-delay: 0.4s;"></i>
+                </div>
+                <div class="flex-1 z-10">
+                    <span class="text-xs uppercase tracking-wider text-pink-400 font-semibold">Pilihan C</span>
+                    <p class="box-answer text-lg md:text-xl font-bold text-white mt-0.5">-</p>
+                </div>
+                <div class="absolute bottom-0 left-0 h-1.5 bg-yellow-400 w-0 transition-all duration-100 dwell-bar"></div>
+            </div>
+
+            <!-- Box 3 (Bottom-Right) -->
+            <div id="box-3" class="mystery-box group relative bg-gradient-to-br from-teal-900/80 to-slate-900/90 border-2 border-teal-500/50 hover:border-teal-400 rounded-3xl p-6 shadow-xl flex items-center gap-5 transition-all duration-300 backdrop-blur-md cursor-pointer overflow-hidden">
+                <div class="absolute -right-6 -bottom-6 w-28 h-28 bg-teal-500/10 rounded-full blur-xl group-hover:bg-teal-500/20 transition"></div>
+                <div class="box-icon-wrap w-16 h-16 rounded-2xl bg-teal-600/30 border border-teal-400/40 flex items-center justify-center text-3xl text-teal-300 shadow-inner shrink-0 group-hover:scale-110 transition">
+                    <i class="fa-solid fa-gift animate-bounce" style="animation-delay: 0.6s;"></i>
+                </div>
+                <div class="flex-1 z-10">
+                    <span class="text-xs uppercase tracking-wider text-teal-400 font-semibold">Pilihan D</span>
+                    <p class="box-answer text-lg md:text-xl font-bold text-white mt-0.5">-</p>
+                </div>
+                <div class="absolute bottom-0 left-0 h-1.5 bg-yellow-400 w-0 transition-all duration-100 dwell-bar"></div>
+            </div>
+
+        </div>
+
+    </main>
+
+    <!-- Virtual Hand Cursor on screen -->
+    <div id="handCursor" class="fixed w-10 h-10 rounded-full border-4 border-yellow-400 bg-yellow-500/30 backdrop-blur-sm pointer-events-none transform -translate-x-1/2 -translate-y-1/2 z-50 flex items-center justify-center transition-all duration-75 hidden">
+        <div class="w-3 h-3 bg-yellow-400 rounded-full animate-ping"></div>
+    </div>
+
+    <!-- FOOTER / WEBCAM STATUS -->
+    <footer class="w-full max-w-6xl px-4 py-3 flex justify-between items-center text-xs text-slate-400 z-10 border-t border-slate-800/80">
+        <div class="flex items-center gap-2">
+            <span id="camStatusDot" class="w-3 h-3 rounded-full bg-amber-500 animate-pulse"></span>
+            <span id="camStatusText">Mengaktifkan kamera & MediaPipe Hands...</span>
+        </div>
+        <div>
+            <span>Arahan: Tunjukkan jari telunjuk ke kotak dan kekalkan selama <strong class="text-yellow-400">1 saat</strong> untuk membuka kotak.</span>
+        </div>
+    </footer>
+
+    <!-- GAME OVER / HIGH SCORE MODAL -->
+    <div id="gameOverModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-800 border border-slate-700 max-w-md w-full rounded-3xl p-8 text-center shadow-2xl transform scale-95 transition-all duration-300" id="modalCard">
+            <div class="w-20 h-20 bg-yellow-500/20 border border-yellow-500/40 rounded-3xl mx-auto flex items-center justify-center text-yellow-400 text-4xl mb-5 shadow-lg animate-bounce">
+                <i class="fa-solid fa-trophy"></i>
+            </div>
+            <h3 class="text-2xl font-bold text-white mb-1">Tahniah! Permainan Tamat</h3>
+            <p class="text-slate-400 text-sm mb-6">Anda telah menyelesaikan cabaran Kotak Misteri Nombor.</p>
+            
+            <div class="bg-slate-900/80 rounded-2xl p-5 border border-slate-700 mb-6 flex justify-around items-center">
+                <div>
+                    <span class="block text-xs text-slate-400 uppercase">Jumlah Skor</span>
+                    <span id="finalScore" class="text-3xl font-bold text-emerald-400">0</span>
+                </div>
+                <div class="h-10 w-px bg-slate-800"></div>
+                <div>
+                    <span class="block text-xs text-slate-400 uppercase">Markah Tertinggi</span>
+                    <span id="highScore" class="text-3xl font-bold text-yellow-400">0</span>
+                </div>
+            </div>
+
+            <button onclick="restartGame()" class="w-full py-4 bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-400 hover:to-amber-500 text-slate-950 font-bold rounded-2xl shadow-xl transition transform hover:scale-[1.02] flex items-center justify-center gap-2 text-lg">
+                <i class="fa-solid fa-rotate-right"></i> Main Semula
+            </button>
+        </div>
+    </div>
+
+    <!-- AUDIO & GAME LOGIC SCRIPT -->
+    <script>
+        // --- SOUND EFFECTS SYNTHESIZER (Web Audio API) ---
+        let soundEnabled = true;
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        function playTone(freq, type, duration, delay = 0) {
+            if (!soundEnabled) return;
+            setTimeout(() => {
+                try {
+                    if (audioCtx.state === 'suspended') {
+                        audioCtx.resume();
+                    }
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = type;
+                    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                    gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + duration);
+                } catch(e) {}
+            }, delay);
+        }
+
+        const soundEffects = {
+            hover: () => playTone(400, 'sine', 0.08),
+            dwellProgress: () => playTone(600, 'triangle', 0.1),
+            correct: () => {
+                playTone(523.25, 'sine', 0.15, 0);   // C5
+                playTone(659.25, 'sine', 0.15, 100); // E5
+                playTone(783.99, 'sine', 0.3, 200);  // G5
+            },
+            wrong: () => {
+                playTone(200, 'sawtooth', 0.2, 0);
+                playTone(150, 'sawtooth', 0.3, 150);
+            },
+            victory: () => {
+                playTone(523.25, 'triangle', 0.2, 0);
+                playTone(659.25, 'triangle', 0.2, 150);
+                playTone(783.99, 'triangle', 0.2, 300);
+                playTone(1046.50, 'triangle', 0.5, 450);
+            }
+        };
+
+        function toggleSound() {
+            soundEnabled = !soundEnabled;
+            const btn = document.getElementById('soundToggleBtn');
+            btn.innerHTML = soundEnabled ? '<i class="fa-solid fa-volume-high text-lg"></i>' : '<i class="fa-solid fa-volume-xmark text-lg"></i>';
+            btn.classList.toggle('text-yellow-400', soundEnabled);
+            btn.classList.toggle('text-slate-500', !soundEnabled);
+        }
+
+        // --- MATH QUESTIONS BANK (Subset Theme) ---
+        const questionsBank = [
+            {
+                question: "Senaraikan semua subset yang mungkin bagi set $P = \\{a, b\\}$?",
+                answers: [
+                    "\\{\\}, \\{a\\}, \\{b\\}, \\{a,b\\}",
+                    "\\{a\\}, \\{b\\}",
+                    "\\{\\}, \\{a,b\\}",
+                    "\\{a, b\}, \\{a,b,c\\}"
+                ],
+                correct: 0
+            },
+            {
+                question: "Diberi set $Q = \\{3, 5\\}$. Apakah bilangan subset (n[P(Q)]) bagi set Q?",
+                answers: ["2", "3", "4", "8"],
+                correct: 2 // 2^2 = 4
+            },
+            {
+                question: "Antara berikut, yang manakah merupakan subset bagi set $R = \\{1, 2, 3\\}$?",
+                answers: [
+                    "\\{1, 2, 4\\}",
+                    "\\{2, 3\\}",
+                    "\\{1, 2, 3, 4\\}",
+                    "\\{5\\}"
+                ],
+                correct: 1
+            },
+            {
+                question: "Senaraikan subset bagi set kosong $\\emptyset$ atau $\\{\\}$?",
+                answers: [
+                    "Tiada subset",
+                    "\\{\\}, \\{\\emptyset\\}",
+                    "\\{\\}",
+                    "Set itu sendiri"
+                ],
+                correct: 2
+            },
+            {
+                question: "Jika set $S = \\{x : x \\text{ ialah integer positif kurang daripada 3}\\}$ ($S = \\{1, 2\\}$), berapakah bilangan subset sewajarnya?",
+                answers: ["3", "4", "2", "1"],
+                correct: 0 // 2^n - 1 = 2^2 - 1 = 3
+            }
+        ];
+
+        // --- STREAMING_CHUNK:Game State & MediaPipe Integration... ---
+        let currentRound = 0;
+        let score = 0;
+        let timer = 30;
+        let timerInterval = null;
+        let currentQuestion = null;
+        let gameActive = false;
+
+        // Dwell tracking variables
+        let hoveredBoxIndex = null;
+        let dwellStartTime = 0;
+        const DWELL_DURATION_MS = 1000; // 1 second dwell
+
+        const webcamElement = document.getElementById('webcam');
+        const webcamCanvas = document.getElementById('webcamCanvas');
+        const canvasCtx = webcamCanvas.getContext('2d');
+        const handCursor = document.getElementById('handCursor');
+
+        // Initialize MediaPipe Hands
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.6,
+            minTrackingConfidence: 0.6
+        });
+
+        hands.onResults(onHandResults);
+
+        const camera = new Camera(webcamElement, {
+            onFrame: async () => {
+                await hands.send({ image: webcamElement });
+            },
+            width: 640,
+            height: 480
+        });
+
+        camera.start().then(() => {
+            document.getElementById('camStatusDot').className = "w-3 h-3 rounded-full bg-emerald-500";
+            document.getElementById('camStatusTextinnerText = "Kamera & MediaPipe Hands aktif!"';
+            document.getElementById('camStatusText').textContent = "Kamera & MediaPipe Hands aktif!";
+            startGame();
+        }).catch(err => {
+            document.getElementById('camStatusDot').className = "w-3 h-3 rounded-full bg-red-500";
+            document.getElementById('camStatusText').textContent = "Gagal mengakses kamera. Main menggunakan tetikus.";
+            startGame();
+        });
+
+        // Resize webcam canvas
+        function resizeCanvas() {
+            webcamCanvas.width = window.innerWidth;
+            webcamCanvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // --- STREAMING_CHUNK:Hand Tracking & Dwell Mechanics... ---
+        function onHandResults(results) {
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, webcamCanvas.width, webcamCanvas.height);
+            canvasCtx.drawImage(results.image, 0, 0, webcamCanvas.width, webcamCanvas.height);
+            canvasCtx.restore();
+
+            if (!gameActive) return;
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                // Index finger tip is landmark 8
+                const indexTip = landmarks[8];
+
+                // Map normalized coordinates to window size (mirrored x)
+                const screenX = (1 - indexTip.x) * window.innerWidth;
+                const screenY = indexTip.y * window.innerHeight;
+
+                handCursor.style.left = `${screenX}px`;
+                handCursor.style.top = `${screenY}px`;
+                handCursor.classList.remove('hidden');
+
+                checkDwellCollision(screenX, screenY);
+            } else {
+                handCursor.classList.add('hidden');
+                resetDwell();
+            }
+        }
+
+        // Fallback mouse support for testing without webcam
+        window.addEventListener('mousemove', (e) => {
+            if (!gameActive) return;
+            handCursor.style.left = `${e.clientX}px`;
+            handCursor.style.top = `${e.clientY}px`;
+            handCursor.classList.remove('hidden');
+            checkDwellCollision(e.clientX, e.clientY);
+        });
+
+        function checkDwellCollision(x, y) {
+            let activeBox = null;
+
+            for (let i = 0; i < 4; i++) {
+                const boxEl = document.getElementById(`box-${i}`);
+                const rect = boxEl.getBoundingClientRect();
+
+                if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+                    activeBox = i;
+                    break;
+                }
+            }
+
+            if (activeBox !== null) {
+                if (hoveredBoxIndex !== activeBox) {
+                    // Changed box or newly hovered
+                    hoveredBoxIndex = activeBox;
+                    dwellStartTime = Date.now();
+                    soundEffects.hover();
+                } else {
+                    // Continuing dwell on same box
+                    const elapsed = Date.now() - dwellStartTime;
+                    const progress = Math.min(100, (elapsed / DWELL_DURATION_MS) * 100);
+                    
+                    const boxEl = document.getElementById(`box-${activeBox}`);
+                    const bar = boxEl.querySelector('.dwell-bar');
+                    bar.style.width = `${progress}%`;
+
+                    if (elapsed >= DWELL_DURATION_MS) {
+                        // Dwell completed! Select box
+                        selectAnswer(activeBox);
+                        resetDwell();
+                    }
+                }
+            } else {
+                resetDwell();
+            }
+        }
+
+        function resetDwell() {
+            if (hoveredBoxIndex !== null) {
+                const boxEl = document.getElementById(`box-${hoveredBoxIndex}`);
+                if (boxEl) {
+                    const bar = boxEl.querySelector('.dwell-bar');
+                    if (bar) bar.style.width = '0%';
+                }
+            }
+            hoveredBoxIndex = null;
+            dwellStartTime = 0;
+        }
+
+        // --- STREAMING_CHUNK:Game Flow & Question Management... ---
+        function startGame() {
+            score = 0;
+            currentRound = 0;
+            gameActive = true;
+            document.getElementById('gameOverModal').classList.add('hidden');
+            loadNextRound();
+        }
+
+        function loadNextRound() {
+            if (currentRound >= questionsBank.length) {
+                endGame();
+                return;
+            }
+
+            currentQuestion = questionsBank[currentRound];
+            document.getElementById('roundDisplay').textContent = `${currentRound + 1}/${questionsBank.length}`;
+            document.getElementById('questionText').innerHTML = currentQuestion.question;
+
+            // Shuffle answers or map directly
+            const answers = [...currentQuestion.answers];
+            // Store correct text for validation
+            const correctText = answers[currentQuestion.correct];
+
+            // Randomize answers array for 4 boxes
+            // To keep track of correct, let's map each box to its answer text and whether it's correct
+            const boxOptions = answers.map((ans, idx) => ({
+                text: ans,
+                isCorrect: idx === currentQuestion.correct
+            }));
+
+            // Shuffle boxOptions
+            boxOptions.sort(() => Math.random() - 0.5);
+            currentQuestion.shuffledOptions = boxOptions;
+
+            for (let i = 0; i < 4; i++) {
+                const boxEl = document.getElementById(`box-${i}`);
+                const ansText = boxEl.querySelector('.box-answer');
+                ansText.textContent = boxOptions[i].text;
+                boxEl.querySelector('.dwell-bar').style.width = '0%';
+                boxEl.classList.remove('border-emerald-500', 'border-red-500', 'glow-box');
+            }
+
+            // Reset Timer
+            timer = 30;
+            document.getElementById('timerDisplay').textContent = `${timer}s`;
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                timer--;
+                document.getElementById('timerDisplay').textContent = `${timer}s`;
+                if (timer <= 0) {
+                    clearInterval(timerInterval);
+                    // Time out counts as wrong answer
+                    handleAnswerResult(false);
+                }
+            }, 1000);
+        }
+
+        function selectAnswer(boxIndex) {
+            clearInterval(timerInterval);
+            const chosen = currentQuestion.shuffledOptions[boxIndex];
+            const boxEl = document.getElementById(`box-${boxIndex}`);
+
+            if (chosen.isCorrect) {
+                boxEl.classList.add('border-emerald-500', 'glow-box');
+                score += (100 + (timer * 5)); // Bonus points for remaining time
+                document.getElementById('scoreDisplay').textContent = score;
+                soundEffects.correct();
+                
+                // Animate box opening effect
+                const iconWrap = boxEl.querySelector('.box-icon-wrap');
+                iconWrap.innerHTML = '<i class="fa-solid fa-box-open text-emerald-400"></i>';
+
+                setTimeout(() => {
+                    iconWrap.innerHTML = '<i class="fa-solid fa-gift animate-bounce"></i>';
+                    currentRound++;
+                    loadNextRound();
+                }, 1200);
+            } else {
+                boxEl.classList.add('border-red-500');
+                soundEffects.wrong();
+
+                // Highlight correct box
+                currentQuestion.shuffledOptions.forEach((opt, idx) => {
+                    if (opt.isCorrect) {
+                        document.getElementById(`box-${idx}`).classList.add('border-emerald-500', 'glow-box');
+                    }
+                });
+
+                setTimeout(() => {
+                    currentRound++;
+                    loadNextRound();
+                }, 1500);
+            }
+        }
+
+        function handleAnswerResult(isCorrect) {
+            soundEffects.wrong();
+            currentQuestion.shuffledOptions.forEach((opt, idx) => {
+                if (opt.isCorrect) {
+                    document.getElementById(`box-${idx}`).classList.add('border-emerald-500', 'glow-box');
+                }
+            });
+            setTimeout(() => {
+                currentRound++;
+                loadNextRound();
+            }, 1500);
+        }
+
+        function endGame() {
+            gameActive = false;
+            clearInterval(timerInterval);
+            handCursor.classList.add('hidden');
+            soundEffects.victory();
+
+            let highScore = localStorage.getItem('kmn_highscore') || 0;
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('kmn_highscore', highScore);
+            }
+
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('highScore').textContent = highScore;
+            document.getElementById('gameOverModal').classList.remove('hidden');
+        }
+
+        function restartGame() {
+            startGame();
+        }
+    </script>
+</body>
+</html>
